@@ -1,0 +1,28 @@
+.container{
+  display: flex;
+  align-items: center;
+  gap: $spacing-8;
+  text-decoration: none;
+}
+
+.text{
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+}
+
+.active {
+  .icon, .text {
+    color: $color-text;
+  }
+}
+
+.inactive {
+  .icon, .text {
+    color: $color-text-subtle;
+  }
+}
