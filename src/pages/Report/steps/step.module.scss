@@ -66,7 +66,7 @@
 .reviewSection {
   padding: $spacing-16 0;
   border-bottom: 1px solid $color-border-subtle;
-
+  width: 100%;
   &:last-child {
     border-bottom: none;
   }
@@ -106,6 +106,96 @@
   background: $color-surface-subtle;
   color: $color-text-subtle;
   font-size: 12px;
+}
+
+// ── 원문 / 암호문 split 패널 (Step 5) ────────────────────
+.splitPanel {
+  width: 100%;
+  border: 1px solid $color-border;
+  border-radius: $radius-12;
+  overflow: hidden;
+}
+
+// 전체 너비 배너 — "↓ 서버는 오른쪽만 봅니다"
+// writing-mode 미사용, 가로 텍스트로 뒤집힘 없음
+.splitBanner {
+  padding: $spacing-8 $spacing-16;
+  text-align: center;
+  background: $color-surface-brand-subtle;
+  border-bottom: 1px solid $color-border;
+  font-size: 11px;
+  font-weight: 600;
+  color: $color-text-brand-heavy;
+}
+
+// 컬럼 레이블 행 — 정확히 50/50 flex
+.splitColHeaders {
+  display: flex;
+  background: $color-surface-subtle;
+  border-bottom: 1px solid $color-border;
+}
+
+.splitColHeader {
+  flex: 1;
+  padding: $spacing-8 $spacing-16;
+  font-size: 11px;
+  font-weight: 600;
+  color: $color-text-subtle;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+
+  &:last-child {
+    border-left: 1px solid $color-border;
+    text-align: right;
+  }
+}
+
+// 내용 행 — 정확히 50/50 flex, 부모 너비 100% 사용
+.splitContent {
+  display: flex;
+  width: 100%;
+}
+
+// 좌측: 원문 (Pretendard, 읽기 쉽게)
+.plainPanel {
+  flex: 1;
+  min-width: 0;
+  padding: $spacing-16;
+  background: $color-surface;
+}
+
+// 가운데 구분선
+.splitLine {
+  width: 1px;
+  flex-shrink: 0;
+  background: $color-border;
+}
+
+// 우측: 암호문 (밝고 자연스러운 디자인)
+.cipherPanel {
+  flex: 1;
+  min-width: 0;
+  padding: $spacing-16;
+  background: $color-surface-subtle;
+  overflow: hidden;
+}
+
+// <pre> 에 직접 적용 (Typo.Caption as="pre" 타입 에러 우회)
+.cipherText {
+  margin: 0;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 11px;
+  line-height: 1.8;
+  color: $color-text-subtle;
+  word-break: break-all;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.cipherEmpty {
+  font-size: 12px;
+  color: $color-text-subtle;
+  font-style: italic;
 }
 
 // ── 파일 입력 ──────────────────────────────────────────

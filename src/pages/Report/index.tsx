@@ -56,6 +56,35 @@ function draftReducer(state: ReportDraft, action: DraftAction): ReportDraft {
   }
 }
 
+// ── 스텝별 진행 가능 여부 ────────────────────────────────
+function canProceed(step: number, draft: ReportDraft): boolean {
+  switch (step) {
+    case 0:
+      // 유형은 항상 기본값이 있으므로 항상 통과
+      return true;
+    case 1:
+      return (
+        draft.matching.facilityId.trim() !== "" &&
+        draft.matching.perpetratorName.trim() !== "" &&
+        draft.matching.perpetratorRole.trim() !== ""
+      );
+    case 2:
+      return (
+        draft.incident.occurredAt.trim() !== "" &&
+        draft.incident.locationDetail.trim() !== "" &&
+        draft.incident.description.trim() !== ""
+      );
+    case 3:
+      // 연락 안 함이면 값 없어도 통과, 아니면 값 필요
+      return (
+        draft.reporterContact.contactMethod === "none" ||
+        draft.reporterContact.contactValue.trim() !== ""
+      );
+    default:
+      return true;
+  }
+}
+
 // ── 진행 표시줄 ──────────────────────────────────────────
 function ProgressBar({ current }: { current: number }) {
   return (
@@ -157,7 +186,12 @@ export default function Report() {
             제출 (준비 중)
           </Button>
         ) : (
-          <Button variant="primary" size="medium" onClick={() => setStep((n) => n + 1)}>
+          <Button
+            variant="primary"
+            size="medium"
+            onClick={() => setStep((n) => n + 1)}
+            disabled={!canProceed(step, draft)}
+          >
             다음
           </Button>
         )}
