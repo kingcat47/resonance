@@ -1,5 +1,7 @@
 import { Spacing, Typo, VStack } from "@/components/ui";
 import { encryptMock } from "@/lib/crypto/mockEncrypt";
+import { makeShare } from "@/lib/crypto/shamir";
+import { makeTag } from "@/lib/crypto/tag";
 import type { ReportDraft } from "@/types/report";
 
 import s from "./step.module.scss";
@@ -36,13 +38,14 @@ function PlainRow({ label, value }: { label: string; value: string }) {
 
 // ── 원문 / 암호문 split 패널 ─────────────────────────────
 interface SplitPanelProps {
-  lockLabel: string;        // 잠금 유형 (예: "tag 잠금")
-  plainContent: string;     // 직렬화된 원문 (표시용)
+  lockLabel: string;         // 잠금 유형 (예: "tag 잠금")
+  plainContent: string;      // 직렬화된 원문 (표시용)
+  serverData?: string;       // 실제 서버 전송 데이터 — 없으면 encryptMock 사용
   children: React.ReactNode; // 원문 패널 내용
 }
 
-function SplitPanel({ lockLabel, plainContent, children }: SplitPanelProps) {
-  const cipher = plainContent.trim() ? encryptMock(plainContent) : "";
+function SplitPanel({ lockLabel, plainContent, serverData, children }: SplitPanelProps) {
+  const cipher = serverData ?? (plainContent.trim() ? encryptMock(plainContent) : "");
 
   return (
     <div className={s.reviewSection}>
@@ -107,22 +110,32 @@ export default function Step5Review({ draft }: Props) {
     .filter(Boolean)
     .join("\n");
 
+  // matching 섹션 서버 데이터 — 실제 tag + share 계산 (미입력 시 빈 문자열)
+  const matchingServerData = (() => {
+    const { facilityId, perpetratorName, perpetratorRole } = matching;
+    if (!facilityId.trim() || !perpetratorName.trim() || !perpetratorRole.trim()) return "";
+    const tag = makeTag(facilityId, perpetratorName, perpetratorRole);
+    // 미리보기용 x = 1 (실제 제출 시에는 Date.now() 기반 x 사용)
+    const share = makeShare(tag, 1n);
+    return `tag:\n${tag}\n\nshare.x: ${share.x}\nshare.y (hex):\n${share.y.toString(16)}`;
+  })();
+
   return (
     <VStack fullWidth>
       <Typo.Headline>입력 내용 검토</Typo.Headline>
       <Spacing size={8} />
       <Typo.Body>
-        좌측은 입력한 원문, 우측은 서버로 전송될 암호문입니다.
+        좌측은 입력한 원문, 우측은 서버로 전송될 데이터입니다.
         <br />
         <Typo.Subtext style={{ color: "#7D7D7D" }}>
-          ※ 지금 암호화는 UI 확인용 더미입니다. 실제 암호는 Phase 1에서 적용됩니다.
+          ※ 가해자 정보는 실제 tag+share, 나머지는 Phase 1 전까지 더미 암호입니다.
         </Typo.Subtext>
       </Typo.Body>
 
       <Spacing size={24} />
 
-      {/* 1. 시설·가해자 정보 — tag 잠금 */}
-      <SplitPanel lockLabel="시설·가해자 정보 — tag 잠금" plainContent={matchingPlain}>
+      {/* 1. 시설·가해자 정보 — tag 잠금 (실제 Shamir 매칭 코어) */}
+      <SplitPanel lockLabel="시설·가해자 정보 — tag 잠금" plainContent={matchingPlain} serverData={matchingServerData}>
         <PlainRow label="시설 식별자" value={matching.facilityId} />
         <PlainRow label="가해자 이름" value={matching.perpetratorName} />
         <PlainRow label="직책·역할" value={matching.perpetratorRole} />
