@@ -23,6 +23,16 @@
   align-items: center;
 }
 
+.logoLink {
+  text-decoration: none;
+  color: inherit;
+}
+
+.logoText {
+  font-weight: 700;
+  color: $color-text-brand-heavy;
+}
+
 .right{
   display: flex;
   flex-direction: row;

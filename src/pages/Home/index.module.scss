@@ -1,0 +1,39 @@
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $spacing-32;
+  width: 100%;
+  max-width: 520px;
+  text-align: center;
+}
+
+.heroBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-8;
+  padding: $spacing-8 $spacing-16;
+  border-radius: $radius-full;
+  background-color: $color-surface-brand-subtle;
+  color: $color-text-brand-heavy;
+
+  svg {
+    flex-shrink: 0;
+  }
+}
+
+.title {
+  font-size: 32px;
+  line-height: 1.35;
+  font-weight: 700;
+  margin: 0;
+}
+
+.subtitle {
+  color: $color-text-subtle;
+  line-height: 1.6;
+}
+
+.actions {
+  max-width: 360px;
+}
