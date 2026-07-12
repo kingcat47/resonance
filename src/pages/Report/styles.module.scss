@@ -92,3 +92,60 @@
   align-items: center;
   width: 100%;
 }
+
+// ── 제출 완료 화면 ────────────────────────────────────────
+.successCard {
+  width: 100%;
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: $radius-16;
+  padding: $spacing-40;
+  box-shadow: $shadow;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: $spacing-24;
+}
+
+.successIcon {
+  color: $color-surface-brand-heavy;
+}
+
+// 경고 박스 — "지금 저장하세요"
+.warningBox {
+  width: 100%;
+  padding: $spacing-16;
+  background: $color-surface-brand-subtle;
+  border: 1px solid $color-surface-brand;
+  border-radius: $radius-12;
+  text-align: left;
+}
+
+// 토큰 표시 영역
+.tokenBox {
+  width: 100%;
+  padding: $spacing-20;
+  background: $color-surface-subtle;
+  border: 1px solid $color-border;
+  border-radius: $radius-12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $spacing-16;
+}
+
+.tokenText {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: $color-text;
+}
+
+.copyFeedback {
+  color: $color-text-brand-heavy;
+  font-size: 13px;
+  font-weight: 600;
+  min-height: 20px;
+}

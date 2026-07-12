@@ -2,6 +2,7 @@ import { useReducer, useState } from "react";
 
 import { MainLayout } from "@/components/layout";
 import { Button, Spacing, Typo, VStack } from "@/components/ui";
+import { encryptMock } from "@/lib/crypto/mockEncrypt";
 import type { IncidentData, MatchingData, ReportDraft, ReporterContact } from "@/types/report";
 
 import s from "./styles.module.scss";
@@ -10,6 +11,7 @@ import Step2FacilityInfo from "./steps/Step2FacilityInfo";
 import Step3Incident from "./steps/Step3Incident";
 import Step4Contact from "./steps/Step4Contact";
 import Step5Review from "./steps/Step5Review";
+import SubmitSuccess from "./SubmitSuccess";
 
 // ── 스텝 메타데이터 ──────────────────────────────────────
 const STEPS = ["신고자 유형", "시설·가해자", "사건 내용", "연락처", "검토·제출"];
@@ -54,6 +56,17 @@ function draftReducer(state: ReportDraft, action: DraftAction): ReportDraft {
     case "UPDATE_REPORTER_CONTACT":
       return { ...state, reporterContact: { ...state.reporterContact, ...action.payload } };
   }
+}
+
+// ── 재접속 토큰 생성 ─────────────────────────────────────
+// crypto.getRandomValues → 6바이트 → 12자리 hex → XXXX-XXXX-XXXX
+function generateToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+  return `${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
 }
 
 // ── 스텝별 진행 가능 여부 ────────────────────────────────
@@ -124,9 +137,32 @@ function ProgressBar({ current }: { current: number }) {
 export default function Report() {
   const [step, setStep] = useState(0);
   const [draft, dispatch] = useReducer(draftReducer, initialDraft);
+  // null = 미제출 / string = 제출 완료 토큰 (메모리에만 존재)
+  const [submittedToken, setSubmittedToken] = useState<string | null>(null);
 
   const isFirst = step === 0;
   const isLast = step === STEPS.length - 1;
+
+  // TODO: Phase 1에서 실제 암호화 및 서버 전송으로 교체
+  function handleSubmit() {
+    const encryptedPayload = {
+      matching: encryptMock(JSON.stringify(draft.matching)),
+      incident: encryptMock(JSON.stringify(draft.incident)),
+      reporterContact: encryptMock(JSON.stringify(draft.reporterContact)),
+      draftId: draft.draftId,
+    };
+    console.log("[공명] 가짜 암호화 draft (Phase 1에서 실제 암호로 교체):", encryptedPayload);
+    setSubmittedToken(generateToken());
+  }
+
+  // 제출 완료 → 토큰 1회 표시 화면
+  if (submittedToken !== null) {
+    return (
+      <MainLayout gap={32} style={{ paddingTop: 48, paddingBottom: 80 }}>
+        <SubmitSuccess token={submittedToken} />
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout gap={32} style={{ paddingTop: 48, paddingBottom: 80 }}>
@@ -182,8 +218,8 @@ export default function Report() {
         <Spacing size={0} />
 
         {isLast ? (
-          <Button variant="primary" size="medium" disabled>
-            제출 (준비 중)
+          <Button variant="primary" size="medium" onClick={handleSubmit}>
+            제출하기
           </Button>
         ) : (
           <Button
