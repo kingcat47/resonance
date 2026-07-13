@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 서버는 암호문만 저장한다 — 평문 신고내용·이메일 컬럼 없음 (DESIGN.md 원칙)
+model Report {
+  id                 String   @id @default(cuid())
+
+  // 가해자 tag — HMAC-SHA256 해시, 원문 역산 불가. 매칭 판정에 사용.
+  tag                String
+
+  // Shamir 점(share) — 단독으로는 비밀키 K 복원 불가
+  shareX             String
+  shareY             String
+
+  // 사건 내용 암호문 — 감독기관 RSA 공개키로 잠긴 AES-GCM 블랍
+  incidentC          String
+  incidentEncryptedK String
+
+  // 신고자 연락처 암호문
+  contactC           String
+  contactEncryptedK  String
+
+  createdAt          DateTime @default(now())
+
+  // tag로 빠른 매칭 판정
+  @@index([tag])
+}

@@ -197,38 +197,178 @@ Shamir (2, n) 비밀분산은 1차 다항식(직선) y = ax + b를 사용한다.
 
 2. **로그인 시도 횟수 제한**: 무차별 대입 공격 방어.
 
-### 가입 / 로그인 흐름 (개념)
+---
 
+### 4-1. 식별자 및 키 정의
+
+| 이름 | 생성 방법 | 어디에 존재하는가 |
+|---|---|---|
+| accountID | `HMAC-SHA256(trim(email).toLowerCase(), ACCOUNT_DOMAIN_KEY)` | 클라이언트 계산 → 서버 저장 |
+| masterKey | `Argon2id(password, salt, params)` 출력 32바이트 | 클라이언트에서만 도출. 절대 전송 안 함 |
+| verifier | `HMAC-SHA256(masterKey, "resonance-verifier-v1")` | 클라이언트 계산 → 서버 저장 |
+| challenge | 서버가 로그인 시 발급하는 1회용 랜덤 난스 | 서버 메모리 (단기 보관) |
+| proof | `HMAC-SHA256(verifier, challenge)` | 클라이언트 계산 → 로그인 시 전송 |
+
+`ACCOUNT_DOMAIN_KEY`는 tag 생성의 `TAG_DOMAIN_KEY`와 동일 패턴의 고정 클라이언트 키.
 서버 DB에 이메일 평문은 절대 존재하지 않는다.
 
+---
+
+### 4-2. 가입 흐름
+
 ```
-[가입]
-  클라이언트:
-    email → accountID = HMAC(email, 클라이언트_도메인_키)
-           password → 키유도함수(Argon2id) → 파생키 쌍
-    서버로 전송: accountID(해시), 공개파생키
+[클라이언트]
+
+  1. accountID = HMAC-SHA256(normalize(email), ACCOUNT_DOMAIN_KEY)
+  2. salt = crypto.getRandomValues(16바이트)           ← 클라이언트가 생성
+  3. masterKey = Argon2id(password, salt, { m:65536, t:3, p:1 })
+  4. verifier = HMAC-SHA256(masterKey, "resonance-verifier-v1")
+
+  POST /auth/register
+  {
+    accountID,       ← 이메일 해시. 서버가 이메일 원문 모름.
+    verifier,        ← 비밀번호 검증자. 서버가 비밀번호 모름.
+    salt,            ← base64. Argon2id 재계산에 필요.
+    argonParams: { m: 65536, t: 3, p: 1 }
+  }
+
+[서버]
+
+  저장:
+    Account {
+      accountID,           ← 유일 인덱스
+      verifier,
+      salt,
+      argonParams,
+      failCount: 0,
+      lockedUntil: null,
+      createdAt
+    }
+
+  모르는 것: 이메일 원문, 비밀번호, masterKey
+```
+
+> ⚠ Argon2id는 브라우저에서 WebAssembly 포트(예: `@noble/argon2` 또는 `argon2-browser`)가
+> 필요하다. 1단계 구현 시 해당 패키지를 추가해야 한다.
+
+---
+
+### 4-3. 로그인 흐름 (챌린지-응답)
+
+```
+[Step 1 — 챌린지 요청]
+
+  POST /auth/challenge
+  { accountID }
 
   서버:
-    저장: accountID(해시), 공개파생키
-    모르는 것: 이메일 원문, 비밀번호
+    - accountID 존재 여부 확인 (존재하지 않아도 에러 형태를 동일하게 → 계정 존재 여부 노출 방지)
+    - lockedUntil 확인 → 잠금 중이면 409 + 잠금 해제 시각 반환
+    - challenge = crypto.randomBytes(32)  ← 서버가 생성, 단기 저장(Redis 또는 메모리, TTL 5분)
+    → { salt, argonParams, challenge }
 
-[로그인]
-  클라이언트:
-    email → accountID (동일 해시)
-    password → 파생키 쌍 재생성
-    서버로 전송: accountID, 서명 또는 챌린지 응답
+
+[Step 2 — 증명 제출]
+
+  POST /auth/login
+  {
+    accountID,
+    proof = HMAC-SHA256(verifier, challenge)
+             ↑ 클라이언트: masterKey = Argon2id(password, salt) → verifier 재계산 → proof
+  }
 
   서버:
-    accountID로 계정 조회 → 챌린지 검증
-    로그인 실패 누적 시 해당 accountID 일시 잠금
-    모르는 것: 이메일 원문
+    - challenge 유효성 확인 (TTL, 1회용)
+    - expected = HMAC-SHA256(storedVerifier, challenge)
+    - proof == expected  → 성공: JWT 발급, failCount = 0
+    - proof ≠ expected   → 실패: failCount++
+
+  실패 누적 시 잠금:
+    - failCount ≥ 5  → lockedUntil = now + 15분, 409 반환
+    - 잠금 중 시도   → 409 + { lockedUntil } 반환
+    - 성공 시        → failCount = 0, lockedUntil = null
+
+  모르는 것: 이메일 원문, 비밀번호, masterKey
 ```
 
-### 오픈소스 통합 예정
+---
 
-이 계정 방식은 2024 USENIX Security에서 발표된
-계정 복구 관련 연구(privacy-preserving account recovery)를 참고해 구현 예정이다.
-직접 처음부터 짜지 않고 검증된 오픈소스를 통합하는 것을 목표로 한다.
+### 4-4. 신고–계정 연결
+
+신고 제출 시 로그인된 계정을 신고에 묶는다.
+
+```
+[DB 스키마 변경]
+  Report 모델에 accountId 컬럼 추가.
+  UNIQUE constraint: (accountId, tag)
+    → 같은 계정이 같은 가해자를 중복 지목하는 것을 DB 수준에서 차단.
+
+[신고 제출 흐름]
+  1. 클라이언트: 로그인 세션 토큰과 함께 POST /reports
+  2. 서버: sessionToken → accountId 확인
+  3. 서버: (accountId, tag) 중복 체크
+     - 중복이면 409 "이미 같은 가해자를 신고한 계정입니다" 반환
+     - 중복 아니면 accountId를 Report에 포함해 저장
+  4. tag 매칭 판정은 기존과 동일 (count ≥ 2 → matched: true)
+
+[서버가 여전히 모르는 것]
+  - accountId가 누구의 이메일인지
+  - 신고 내용 원문 (여전히 암호문으로만 저장)
+```
+
+---
+
+### 4-5. 기존 토큰 화면 처리 계획
+
+현재 구현된 제출 완료 화면의 `XXXX-XXXX-XXXX` 토큰은 **무계정 시절의 잔재**다.
+
+```
+현재 (무계정):
+  제출 완료 → XXXX-XXXX-XXXX 1회 표시 → 메모리에서 소멸
+  → 재접속 방법 없음 (보안상 의도적)
+
+계정 시스템 구현 후 교체:
+  제출 완료 → "신고가 접수되었습니다" + "내 신고 보기" 버튼
+  → 로그인 상태에서 GET /accounts/me/reports → 내 신고 목록 조회
+  → 임계값 충족 알림도 계정으로 수신
+
+교체 시점:
+  - 계정 가입/로그인 UI 구현 완료 후
+  - SubmitSuccess.tsx를 신고 목록 페이지로 교체
+  - 토큰 생성 코드(generateToken) 삭제
+```
+
+---
+
+### 4-6. 구현 단계 구분
+
+#### 1단계 — accountID 해시 기반 단순 인증 (현재 구현 대상)
+
+- accountID = HMAC-SHA256(이메일)
+- verifier = HMAC-SHA256(Argon2id(비밀번호, salt))
+- 챌린지-응답 로그인
+- (accountId, tag) UNIQUE → 중복 지목 방어
+- JWT 세션
+
+**1단계의 한계:**
+verifier가 서버 DB에 저장된다. 서버 DB가 탈취되면 공격자가 verifier를 이용해 인증을 위조할 수 있다
+(verifier = 비밀번호 등가물). 또한 계정 복구 수단이 없어 비밀번호를 잃으면 계정을 되찾을 방법이 없다.
+
+#### 2단계 — 2024 USENIX 오픈소스 통합 (후속)
+
+2024 USENIX Security에서 발표된 privacy-preserving account recovery 연구를 참고해 구현한다.
+직접 처음부터 짜지 않고 검증된 오픈소스를 통합한다.
+
+핵심 개선점:
+- **OPAQUE 프로토콜**: 서버가 verifier 자체를 저장하지 않는다. 비밀번호 파생 키 교환(OPAQUE-KE)으로 서버는 "비밀번호가 맞다"는 사실만 알 수 있고 verifier는 알 수 없다. DB 탈취 시 공격자가 얻는 정보가 없다.
+- **계정 복구**: 이메일을 서버에 보내지 않고도 복구 코드 또는 신뢰 연락처 방식으로 계정을 되찾을 수 있는 프로토콜.
+
+| 항목 | 1단계 | 2단계 (USENIX) |
+|---|---|---|
+| 비밀번호 검증 | 서버가 verifier(해시) 저장 | OPAQUE — 서버가 verifier 모름 |
+| DB 탈취 위험 | verifier 노출 → 위조 가능 | 프로토콜상 공격자 획득 정보 없음 |
+| 계정 복구 | 없음 (비밀번호 분실 = 계정 소멸) | 프라이버시 보존 복구 프로토콜 |
+| 구현 복잡도 | 낮음 | 높음 (오픈소스 통합) |
 
 ---
 
@@ -289,7 +429,11 @@ Shamir (2, n) 비밀분산은 1차 다항식(직선) y = ax + b를 사용한다.
 |---|---|
 | tag | 가해자 식별 정보를 해시한 값. 서버가 매칭에 사용. 원문 역산 불가. |
 | share | Shamir 비밀분산의 점(point). 단독으로는 비밀키 복원 불가. |
-| 이중 잠금 | 대칭키 K(Shamir)와 감독기관 비밀키 두 조건이 모두 충족돼야 열리는 구조. |
+| 이중 잠금 | Shamir 임계값 충족 + 감독기관 비밀키, 두 조건이 모두 충족돼야 열리는 구조. |
 | 신고자키 | 신고자 연락처 암호화에 사용되는 키. 신고자만 알고 있음. |
-| encryptMock | 현재 코드베이스의 더미 암호 함수. Phase 1에서 실제 Web Crypto API로 교체 예정. |
-| accountID | 이메일을 HMAC으로 변환한 식별자. 서버 DB에 이메일 평문 대신 저장. |
+| accountID | `HMAC-SHA256(normalize(email), ACCOUNT_DOMAIN_KEY)`. 서버 DB에 이메일 평문 대신 저장. |
+| masterKey | `Argon2id(password, salt)` 출력. 클라이언트에서만 존재. 절대 전송 안 함. |
+| verifier | `HMAC-SHA256(masterKey, "resonance-verifier-v1")`. 비밀번호 검증자. 서버가 저장. |
+| challenge | 서버가 로그인 시 발급하는 1회용 랜덤 난스. 재사용 불가. |
+| proof | `HMAC-SHA256(verifier, challenge)`. 클라이언트가 계산해 로그인 시 전송. |
+| OPAQUE | 서버가 verifier를 저장하지 않아도 비밀번호를 검증할 수 있는 프로토콜. 2단계 목표. |
