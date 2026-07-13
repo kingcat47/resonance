@@ -2,7 +2,7 @@ import { useReducer, useState } from "react";
 
 import { MainLayout } from "@/components/layout";
 import { Button, Spacing, Typo, VStack } from "@/components/ui";
-import { encryptMock } from "@/lib/crypto/mockEncrypt";
+import { encryptForSupervisor, getDemoKeyPair } from "@/lib/crypto/encrypt";
 import { makeShare } from "@/lib/crypto/shamir";
 import { makeTag } from "@/lib/crypto/tag";
 import type { IncidentData, MatchingData, ReportDraft, ReporterContact } from "@/types/report";
@@ -145,26 +145,31 @@ export default function Report() {
   const isFirst = step === 0;
   const isLast = step === STEPS.length - 1;
 
-  // TODO: Phase 1에서 incident/contact도 실제 암호화 및 서버 전송으로 교체
-  function handleSubmit() {
-    // matching: 실제 tag + share (진짜 Shamir 매칭 코어)
+  // TODO: 서버 전송 및 계정 기반 x 값으로 교체 (Phase 2)
+  async function handleSubmit() {
+    // 1. matching — 실제 tag + share (Shamir 매칭 코어)
     const { facilityId, perpetratorName, perpetratorRole } = draft.matching;
     const tag = makeTag(facilityId, perpetratorName, perpetratorRole);
-    // x = 이 신고자의 고유 점 좌표 — 계정 시스템 구축 전 임시로 타임스탬프 사용
-    const x = BigInt(Date.now());
-    const share = makeShare(tag, x);
+    // x = 계정 시스템 구축 전 임시로 타임스탬프 사용
+    const share = makeShare(tag, BigInt(Date.now()));
+
+    // 2. incident / reporterContact — AES-256-GCM + RSA-OAEP 이중 잠금
+    const { publicKey } = await getDemoKeyPair();
+    const [incidentBlob, contactBlob] = await Promise.all([
+      encryptForSupervisor(JSON.stringify(draft.incident), publicKey),
+      encryptForSupervisor(JSON.stringify(draft.reporterContact), publicKey),
+    ]);
 
     const payload = {
       matching: {
         tag,
         share: { x: share.x.toString(), y: share.y.toString(16) },
       },
-      // 아래 두 섹션은 Phase 1에서 실제 암호로 교체 예정
-      incident: encryptMock(JSON.stringify(draft.incident)),
-      reporterContact: encryptMock(JSON.stringify(draft.reporterContact)),
+      incident: incidentBlob,       // { C, encryptedK }
+      reporterContact: contactBlob, // { C, encryptedK }
       draftId: draft.draftId,
     };
-    console.log("[공명] 신고 payload (matching: 실제 tag+share / 나머지: 더미):", payload);
+    console.log("[공명] 신고 payload (전 구간 실제 암호):", payload);
     setSubmittedToken(generateToken());
   }
 

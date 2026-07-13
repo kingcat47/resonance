@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
+
 import { Spacing, Typo, VStack } from "@/components/ui";
-import { encryptMock } from "@/lib/crypto/mockEncrypt";
+import { encryptForSupervisor, getDemoKeyPair } from "@/lib/crypto/encrypt";
+import type { EncryptedBlob } from "@/lib/crypto/encrypt";
 import { makeShare } from "@/lib/crypto/shamir";
 import { makeTag } from "@/lib/crypto/tag";
 import type { ReportDraft } from "@/types/report";
@@ -36,16 +39,21 @@ function PlainRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// ── 원문 / 암호문 split 패널 ─────────────────────────────
-interface SplitPanelProps {
-  lockLabel: string;         // 잠금 유형 (예: "tag 잠금")
-  plainContent: string;      // 직렬화된 원문 (표시용)
-  serverData?: string;       // 실제 서버 전송 데이터 — 없으면 encryptMock 사용
-  children: React.ReactNode; // 원문 패널 내용
+// ── blob 표시 포맷 ────────────────────────────────────────
+function formatBlob(blob: EncryptedBlob): string {
+  const trunc = (s: string) => (s.length > 64 ? s.slice(0, 64) + "…" : s);
+  return `[AES-256-GCM + RSA-2048-OAEP]\n\nC:\n${trunc(blob.C)}\n\nencryptedK:\n${trunc(blob.encryptedK)}`;
 }
 
-function SplitPanel({ lockLabel, plainContent, serverData, children }: SplitPanelProps) {
-  const cipher = serverData ?? (plainContent.trim() ? encryptMock(plainContent) : "");
+// ── 원문 / 서버전송 split 패널 ───────────────────────────
+interface SplitPanelProps {
+  lockLabel: string;         // 잠금 유형
+  serverData: string;        // 우측 패널 — 서버로 전송될 실제 데이터
+  children: React.ReactNode; // 좌측 패널 — 원문
+}
+
+function SplitPanel({ lockLabel, serverData, children }: SplitPanelProps) {
+  const cipher = serverData;
 
   return (
     <div className={s.reviewSection}>
@@ -82,35 +90,7 @@ function SplitPanel({ lockLabel, plainContent, serverData, children }: SplitPane
 export default function Step5Review({ draft }: Props) {
   const { matching, incident, reporterContact } = draft;
 
-  // 각 그룹을 직렬화해 원문 → 암호문 변환 기준 문자열로 사용
-  const matchingPlain = [
-    matching.facilityId,
-    matching.perpetratorName,
-    matching.perpetratorRole,
-    matching.perpetratorDescription ?? "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const incidentPlain = [
-    incident.occurredAt,
-    incident.locationDetail,
-    incident.description,
-    incident.evidenceFiles.map((f) => f.originalName).join(", "),
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  const contactPlain = [
-    REPORTER_TYPE_LABEL[reporterContact.reporterType],
-    CONTACT_METHOD_LABEL[reporterContact.contactMethod],
-    reporterContact.contactValue,
-    reporterContact.consentToReveal ? "신원공개동의" : "비공개",
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  // matching 섹션 서버 데이터 — 실제 tag + share 계산 (미입력 시 빈 문자열)
+  // ── matching — 실제 tag + share (동기) ────────────────
   const matchingServerData = (() => {
     const { facilityId, perpetratorName, perpetratorRole } = matching;
     if (!facilityId.trim() || !perpetratorName.trim() || !perpetratorRole.trim()) return "";
@@ -120,22 +100,42 @@ export default function Step5Review({ draft }: Props) {
     return `tag:\n${tag}\n\nshare.x: ${share.x}\nshare.y (hex):\n${share.y.toString(16)}`;
   })();
 
+  // ── incident / contact — AES-GCM + RSA-OAEP (비동기) ─
+  const [incidentServerData, setIncidentServerData] = useState("암호화 중…");
+  const [contactServerData, setContactServerData] = useState("암호화 중…");
+
+  useEffect(() => {
+    getDemoKeyPair().then(({ publicKey }) =>
+      encryptForSupervisor(JSON.stringify(incident), publicKey).then((blob) =>
+        setIncidentServerData(formatBlob(blob)),
+      ),
+    );
+  }, []);
+
+  useEffect(() => {
+    getDemoKeyPair().then(({ publicKey }) =>
+      encryptForSupervisor(JSON.stringify(reporterContact), publicKey).then((blob) =>
+        setContactServerData(formatBlob(blob)),
+      ),
+    );
+  }, []);
+
   return (
     <VStack fullWidth>
       <Typo.Headline>입력 내용 검토</Typo.Headline>
       <Spacing size={8} />
       <Typo.Body>
-        좌측은 입력한 원문, 우측은 서버로 전송될 데이터입니다.
+        좌측은 입력한 원문, 우측은 서버로 전송될 실제 암호문입니다.
         <br />
         <Typo.Subtext style={{ color: "#7D7D7D" }}>
-          ※ 가해자 정보는 실제 tag+share, 나머지는 Phase 1 전까지 더미 암호입니다.
+          가해자: tag+share (Shamir) · 사건/연락처: AES-256-GCM + RSA-2048-OAEP
         </Typo.Subtext>
       </Typo.Body>
 
       <Spacing size={24} />
 
       {/* 1. 시설·가해자 정보 — tag 잠금 (실제 Shamir 매칭 코어) */}
-      <SplitPanel lockLabel="시설·가해자 정보 — tag 잠금" plainContent={matchingPlain} serverData={matchingServerData}>
+      <SplitPanel lockLabel="시설·가해자 정보 — tag 잠금" serverData={matchingServerData}>
         <PlainRow label="시설 식별자" value={matching.facilityId} />
         <PlainRow label="가해자 이름" value={matching.perpetratorName} />
         <PlainRow label="직책·역할" value={matching.perpetratorRole} />
@@ -145,7 +145,7 @@ export default function Step5Review({ draft }: Props) {
       </SplitPanel>
 
       {/* 2. 사건 내용 — 이중 잠금 */}
-      <SplitPanel lockLabel="사건 내용 — 이중 잠금" plainContent={incidentPlain}>
+      <SplitPanel lockLabel="사건 내용 — 이중 잠금" serverData={incidentServerData}>
         <PlainRow label="발생 일시" value={incident.occurredAt} />
         <PlainRow label="발생 장소" value={incident.locationDetail} />
         <PlainRow label="서술" value={incident.description} />
@@ -156,7 +156,7 @@ export default function Step5Review({ draft }: Props) {
       </SplitPanel>
 
       {/* 3. 신고자 정보 — 신고자키 잠금 */}
-      <SplitPanel lockLabel="신고자 정보 — 신고자키 잠금" plainContent={contactPlain}>
+      <SplitPanel lockLabel="신고자 정보 — 신고자키 잠금" serverData={contactServerData}>
         <PlainRow label="신고자 유형" value={REPORTER_TYPE_LABEL[reporterContact.reporterType]} />
         <PlainRow label="연락 수단" value={CONTACT_METHOD_LABEL[reporterContact.contactMethod]} />
         {reporterContact.contactMethod !== "none" && (
