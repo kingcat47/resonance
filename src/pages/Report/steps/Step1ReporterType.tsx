@@ -9,10 +9,10 @@ interface Props {
 }
 
 const OPTIONS: { value: ReporterType; label: string; desc: string }[] = [
-  { value: "self", label: "피해 당사자 본인", desc: "학대를 직접 경험하신 분" },
-  { value: "coworker", label: "동료", desc: "같은 시설에서 근무하는 분" },
-  { value: "family", label: "가족·보호자", desc: "피해자의 가족 또는 법정대리인" },
-  { value: "other", label: "기타", desc: "그 외 학대를 목격하거나 인지한 분" },
+  { value: "self", label: "피해 당사자 본인", desc: "괴롭힘을 직접 경험하신 분" },
+  { value: "coworker", label: "동료", desc: "같은 직장에서 목격하거나 인지한 분" },
+  { value: "family", label: "제3자 목격자", desc: "피해자의 가족·지인 또는 외부 관계자" },
+  { value: "other", label: "기타", desc: "그 외 괴롭힘 사실을 알고 있는 분" },
 ];
 
 export default function Step1ReporterType({ value, onChange }: Props) {
@@ -21,7 +21,7 @@ export default function Step1ReporterType({ value, onChange }: Props) {
       <div className={s.stepHeader}>
         <Typo.Headline>신고자 유형을 선택해 주세요</Typo.Headline>
         <Spacing size={8} />
-        <Typo.Body>선택하신 유형은 신고자키로 암호화되어 보호됩니다.</Typo.Body>
+        <Typo.Body>선택하신 유형은 암호화되어 보호됩니다. 신고 내용과 함께 서버에 평문으로 전달되지 않습니다.</Typo.Body>
       </div>
 
       <VStack gap={12} fullWidth>

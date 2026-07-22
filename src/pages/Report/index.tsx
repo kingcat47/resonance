@@ -2,8 +2,11 @@ import { useReducer, useState } from "react";
 
 import { MainLayout } from "@/components/layout";
 import { Button, Spacing, Typo, VStack } from "@/components/ui";
-import { encryptForSupervisor, getDemoKeyPair } from "@/lib/crypto/encrypt";
-import { makeShare } from "@/lib/crypto/shamir";
+import { submitReport } from "@/lib/api/reports";
+import { encryptForSupervisor } from "@/lib/crypto/encrypt";
+import { deriveKviaOPRF, normalizePerpetratorInput } from "@/lib/crypto/oprf";
+import { makeShare, randomShareX } from "@/lib/crypto/shamir";
+import { getSupervisorPublicKey } from "@/lib/crypto/supervisorKey";
 import { makeTag } from "@/lib/crypto/tag";
 import type { IncidentData, MatchingData, ReportDraft, ReporterContact } from "@/types/report";
 
@@ -16,20 +19,22 @@ import Step5Review from "./steps/Step5Review";
 import SubmitSuccess from "./SubmitSuccess";
 
 // ── 스텝 메타데이터 ──────────────────────────────────────
-const STEPS = ["신고자 유형", "시설·가해자", "사건 내용", "연락처", "검토·제출"];
+const STEPS = ["신고자 유형", "회사·가해자", "괴롭힘 내용", "연락처", "검토·제출"];
 
 // ── 초기 draft ───────────────────────────────────────────
 const initialDraft: ReportDraft = {
   matching: {
-    facilityId: "",
+    companyId: "",
     perpetratorName: "",
-    perpetratorRole: "",
-    perpetratorDescription: "",
+    perpetratorDept: "",
   },
   incident: {
     occurredAt: "",
     locationDetail: "",
+    harassmentTypes: [],
+    perpetratorRelation: "superior",
     description: "",
+    recurrence: { duration: "", frequency: "" },
     evidenceFiles: [],
   },
   reporterContact: {
@@ -38,7 +43,6 @@ const initialDraft: ReportDraft = {
     contactValue: "",
     consentToReveal: false,
   },
-  // 더미 ID — 실제 제출 시 서버 세션과 연동 예정
   draftId: crypto.randomUUID(),
   createdAt: new Date().toISOString(),
 };
@@ -79,9 +83,9 @@ function canProceed(step: number, draft: ReportDraft): boolean {
       return true;
     case 1:
       return (
-        draft.matching.facilityId.trim() !== "" &&
+        draft.matching.companyId.trim() !== "" &&
         draft.matching.perpetratorName.trim() !== "" &&
-        draft.matching.perpetratorRole.trim() !== ""
+        draft.matching.perpetratorDept.trim() !== ""
       );
     case 2:
       return (
@@ -90,10 +94,12 @@ function canProceed(step: number, draft: ReportDraft): boolean {
         draft.incident.description.trim() !== ""
       );
     case 3:
-      // 연락 안 함이면 값 없어도 통과, 아니면 값 필요
+      // 전화/이메일 선택 + 값 입력 + 동의 체크 모두 필수
       return (
-        draft.reporterContact.contactMethod === "none" ||
-        draft.reporterContact.contactValue.trim() !== ""
+        (draft.reporterContact.contactMethod === "phone" ||
+          draft.reporterContact.contactMethod === "email") &&
+        draft.reporterContact.contactValue.trim() !== "" &&
+        draft.reporterContact.consentToReveal === true
       );
     default:
       return true;
@@ -141,36 +147,72 @@ export default function Report() {
   const [draft, dispatch] = useReducer(draftReducer, initialDraft);
   // null = 미제출 / string = 제출 완료 토큰 (메모리에만 존재)
   const [submittedToken, setSubmittedToken] = useState<string | null>(null);
+  const [submitPending, setSubmitPending] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  // Step5 진입 시 OPRF로 미리 유도한 K — 제출 시 재사용 (OPRF 1회)
+  const [cachedK, setCachedK] = useState<bigint | null>(null);
 
   const isFirst = step === 0;
   const isLast = step === STEPS.length - 1;
 
-  // TODO: 서버 전송 및 계정 기반 x 값으로 교체 (Phase 2)
+  async function goToStep(next: number) {
+    setStep(next);
+    if (next === 4 && cachedK === null) {
+      const { companyId, perpetratorName, perpetratorDept } = draft.matching;
+      const normalized = normalizePerpetratorInput(companyId, perpetratorName, perpetratorDept);
+      try {
+        const K = await deriveKviaOPRF(normalized);
+        setCachedK(K);
+      } catch {
+        // 미리보기 실패 시 무시 — 제출 시 재시도
+      }
+    }
+  }
+
   async function handleSubmit() {
-    // 1. matching — 실제 tag + share (Shamir 매칭 코어)
-    const { facilityId, perpetratorName, perpetratorRole } = draft.matching;
-    const tag = makeTag(facilityId, perpetratorName, perpetratorRole);
-    // x = 계정 시스템 구축 전 임시로 타임스탬프 사용
-    const share = makeShare(tag, BigInt(Date.now()));
+    setSubmitPending(true);
+    setSubmitError(null);
+    try {
+      // 1. OPRF로 K 유도 — Step5 진입 시 캐싱된 값 재사용
+      const { companyId, perpetratorName, perpetratorDept } = draft.matching;
+      const normalized = normalizePerpetratorInput(companyId, perpetratorName, perpetratorDept);
+      const tag = makeTag(companyId, perpetratorName, perpetratorDept);
+      const K = cachedK ?? await deriveKviaOPRF(normalized);
 
-    // 2. incident / reporterContact — AES-256-GCM + RSA-OAEP 이중 잠금
-    const { publicKey } = await getDemoKeyPair();
-    const [incidentBlob, contactBlob] = await Promise.all([
-      encryptForSupervisor(JSON.stringify(draft.incident), publicKey),
-      encryptForSupervisor(JSON.stringify(draft.reporterContact), publicKey),
-    ]);
+      // 2. Shamir share — x는 crypto 랜덤 (타임스탬프 충돌 방지)
+      const x = randomShareX();
+      const share = makeShare(K, x);
 
-    const payload = {
-      matching: {
-        tag,
-        share: { x: share.x.toString(), y: share.y.toString(16) },
-      },
-      incident: incidentBlob,       // { C, encryptedK }
-      reporterContact: contactBlob, // { C, encryptedK }
-      draftId: draft.draftId,
-    };
-    console.log("[공명] 신고 payload (전 구간 실제 암호):", payload);
-    setSubmittedToken(generateToken());
+      // 3. incident / reporterContact — AES-256-GCM + RSA-OAEP 이중 잠금
+      //    bundle = randomKey XOR K → RSA(bundle)
+      //    → RSA 비밀키 없이는 bundle 불가, K 없이는 randomKey 불가
+      const publicKey = await getSupervisorPublicKey();
+      const [incidentBlob, contactBlob] = await Promise.all([
+        encryptForSupervisor(JSON.stringify(draft.incident), publicKey, K),
+        encryptForSupervisor(JSON.stringify(draft.reporterContact), publicKey, K),
+      ]);
+
+      const payload = {
+        matching: {
+          tag,
+          share: { x: share.x.toString(16), y: share.y.toString(16) },
+        },
+        incident: incidentBlob,
+        reporterContact: contactBlob,
+      };
+
+      // 3. 백엔드에 실제 전송
+      const result = await submitReport(payload);
+
+      // matched 여부는 내부 디버그용으로만 기록 — 신고자 화면에 노출하지 않음
+      console.log("[직장안전] 신고 접수 완료:", result.id, "| matched:", result.matched);
+
+      setSubmittedToken(generateToken());
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
+    } finally {
+      setSubmitPending(false);
+    }
   }
 
   // 제출 완료 → 토큰 1회 표시 화면
@@ -185,9 +227,9 @@ export default function Report() {
   return (
     <MainLayout gap={32} style={{ paddingTop: 48, paddingBottom: 80 }}>
       <VStack gap={4} fullWidth>
-        <Typo.Display>익명 신고</Typo.Display>
+        <Typo.Display>직장 내 괴롭힘 익명 신고</Typo.Display>
         <Typo.Body style={{ color: "var(--color-text-subtle, #7D7D7D)" }}>
-          모든 정보는 브라우저에서 암호화된 후 전송됩니다.
+          모든 정보는 브라우저에서 암호화된 후 전송됩니다. 서버는 내용을 볼 수 없습니다.
         </Typo.Body>
       </VStack>
 
@@ -220,15 +262,21 @@ export default function Report() {
             onChange={(payload) => dispatch({ type: "UPDATE_REPORTER_CONTACT", payload })}
           />
         )}
-        {step === 4 && <Step5Review draft={draft} />}
+        {step === 4 && <Step5Review draft={draft} K={cachedK} />}
       </div>
+
+      {submitError && (
+        <div className={s.errorBox}>
+          <Typo.Body style={{ color: "var(--color-error, #d32f2f)" }}>{submitError}</Typo.Body>
+        </div>
+      )}
 
       <div className={s.nav}>
         <Button
           variant="secondary"
           size="medium"
           onClick={() => setStep((n) => n - 1)}
-          disabled={isFirst}
+          disabled={isFirst || submitPending}
         >
           이전
         </Button>
@@ -236,14 +284,14 @@ export default function Report() {
         <Spacing size={0} />
 
         {isLast ? (
-          <Button variant="primary" size="medium" onClick={handleSubmit}>
+          <Button variant="primary" size="medium" onClick={handleSubmit} pending={submitPending}>
             제출하기
           </Button>
         ) : (
           <Button
             variant="primary"
             size="medium"
-            onClick={() => setStep((n) => n + 1)}
+            onClick={() => goToStep(step + 1)}
             disabled={!canProceed(step, draft)}
           >
             다음

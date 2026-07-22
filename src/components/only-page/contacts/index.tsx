@@ -11,9 +11,9 @@ export interface EmergencyContact {
 }
 
 const DEFAULT_CONTACTS: EmergencyContact[] = [
+  { name: "고용노동부", number: "1350", desc: "직장 내 괴롭힘 상담·신고" },
+  { name: "노무사 콜센터", number: "1644-0853", desc: "노동권익 무료 상담" },
   { name: "경찰", number: "112", desc: "긴급 상황, 범죄 신고" },
-  { name: "소방·응급", number: "119", desc: "응급 환자, 구조 요청" },
-  { name: "노인학대신고", number: "1577-0199", desc: "보건복지부 상담·신고" },
 ];
 
 interface ContactsProps {

@@ -72,3 +72,7 @@ coverage/
 # Temporary folders
 tmp/
 temp/
+
+# Key files (never commit)
+private-key.json
+public-key.json

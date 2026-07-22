@@ -34,6 +34,14 @@ export default function SubmitSuccess({ token }: Props) {
         </Typo.Body>
       </VStack>
 
+      {/* 매칭 안내 */}
+      <div className={s.warningBox} style={{ background: "#f0f7ff", borderColor: "#bfdbfe" }}>
+        <Typo.Body style={{ color: "#1e40af" }}>
+          매칭은 유죄 판정이 아닙니다. 같은 가해자를 지목한 신고가 2건 이상 접수되면
+          노무사·변호사 등 전문가 검토의 계기가 마련됩니다.
+        </Typo.Body>
+      </div>
+
       {/* 경고 박스 */}
       <div className={s.warningBox}>
         <Typo.BodyLarge style={{ fontWeight: 600, marginBottom: 6 }}>

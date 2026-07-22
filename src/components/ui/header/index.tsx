@@ -14,7 +14,7 @@ export default function Header() {
       <div className={s.header_content}>
         <div className={s.right}>
           <Link to="/" className={s.logoLink}>
-            <Typo.Headline className={s.logoText}>노인안심</Typo.Headline>
+            <Typo.Headline className={s.logoText}>직장안전</Typo.Headline>
           </Link>
           <nav className={s.items} aria-label="주요 메뉴">
             <HeaderItem

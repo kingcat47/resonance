@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsString, IsNotEmpty, ValidateNested } from 'class-validator';
+import { IsDefined, IsString, IsNotEmpty, ValidateNested } from 'class-validator';
 
 class ShareDto {
   @IsString()
@@ -16,6 +16,7 @@ class MatchingDto {
   @IsNotEmpty()
   tag: string;
 
+  @IsDefined()
   @ValidateNested()
   @Type(() => ShareDto)
   share: ShareDto;
@@ -39,11 +40,13 @@ export class CreateReportDto {
   matching: MatchingDto;
 
   /** 사건 내용 암호문 — 서버가 복호화하지 않음 */
+  @IsDefined()
   @ValidateNested()
   @Type(() => EncryptedBlobDto)
   incident: EncryptedBlobDto;
 
   /** 신고자 연락처 암호문 — 서버가 복호화하지 않음 */
+  @IsDefined()
   @ValidateNested()
   @Type(() => EncryptedBlobDto)
   reporterContact: EncryptedBlobDto;

@@ -1,81 +1,79 @@
 /**
- * DESIGN.md §3-2, §3-3 구현 — 감독기관 공개키 이중 잠금
+ * DESIGN.md §3-2, §3-3 구현 — 이중 잠금 (Shamir + 감독기관 RSA)
  *
- * 이중 잠금:
- *   잠금 1 (Shamir): 같은 가해자를 지목한 신고자 2명의 점이 있어야 K 복원 가능
- *   잠금 2 (공개키): 신고 내용은 감독기관 공개키로 암호화 → 감독기관 비밀키 없이는 열람 불가
+ * 이중 잠금 구조:
+ *   잠금 1 (Shamir): K는 같은 가해자를 지목한 신고자 2명의 share로만 복원 가능
+ *   잠금 2 (RSA):    bundle = RSA(randomKey XOR K) — RSA 비밀키 없이는 bundle 불가
  *
- * 구현 방식: 하이브리드 암호화 (Web Crypto API)
- *   - 신고 내용 → AES-256-GCM 임시키 K로 암호화 → 암호문 C
- *   - 임시키 K → 감독기관 RSA-OAEP 공개키로 래핑 → encryptedK
- *   - 복호화: 감독기관 비밀키로 encryptedK 언래핑 → K → C 복호화
+ * 두 잠금이 수학적으로 AND 관계:
+ *   - RSA만 있으면: bundle = randomKey XOR K 를 얻지만, K 없이는 randomKey 모름
+ *   - share 2개만 있으면: K를 알지만, bundle 없이는 randomKey 모름
+ *   - 둘 다 있으면: randomKey = bundle XOR K → AES 복호화 가능
  *
- * NOTE: 감독기관 키페어는 현재 데모용으로 앱 시작 시 생성됩니다.
- *       실제 배포 시에는 감독기관이 키페어를 외부에서 생성·관리해야 합니다.
+ * 암호화 구현 (하이브리드):
+ *   1. randomKey = AES-256-GCM 임시키
+ *   2. C = AES-GCM(randomKey, 평문)
+ *   3. bundle = randomKey XOR K_bytes
+ *   4. encryptedK = RSA-OAEP(bundle)   ← 서버로 전송되는 형태
  */
 
 // ── 타입 ──────────────────────────────────────────────────
 
 export interface EncryptedBlob {
-  /** base64 — 12바이트 IV ∥ AES-GCM 암호문 (연접) */
+  /** base64 — 12바이트 IV ∥ AES-GCM 암호문 */
   C: string;
-  /** base64 — RSA-OAEP로 래핑된 AES-256 원시 키 */
+  /** base64 — RSA-OAEP로 래핑된 (randomKey XOR K) */
   encryptedK: string;
 }
 
 // ── 유틸 ──────────────────────────────────────────────────
 
 function toBase64(buf: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 function fromBase64(b64: string): Uint8Array {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
-// ── 키페어 생성 ───────────────────────────────────────────
-
 /**
- * 감독기관 RSA-OAEP 키페어를 생성한다.
- *
- * 실제 배포 시에는 감독기관이 이 함수로 키를 직접 생성하고
- * 공개키만 앱에 배포해야 한다. 현재는 데모용으로 앱 내에서 생성한다.
+ * bigint K를 32바이트 Uint8Array로 변환한다.
+ * secp256k1 소수가 256비트이므로 K는 항상 32바이트 이하.
  */
-export async function generateSupervisorKeyPair(): Promise<CryptoKeyPair> {
-  return crypto.subtle.generateKey(
-    {
-      name: "RSA-OAEP",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([1, 0, 1]),
-      hash: "SHA-256",
-    },
-    true,
-    ["encrypt", "decrypt"],
-  );
+function bigintToBytes32(n: bigint): Uint8Array {
+  const hex = n.toString(16).padStart(64, "0");
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
 }
 
-// ── 데모용 싱글턴 키페어 ──────────────────────────────────
-// 앱 시작 시 1회 생성. 새로고침 시 새 키쌍이 생성됨 — 데모 목적 전용.
-const _demoKeyPairPromise: Promise<CryptoKeyPair> = generateSupervisorKeyPair();
-
-/** 데모용 싱글턴 키페어를 반환한다. Step5Review 미리보기와 handleSubmit이 같은 키를 공유한다. */
-export function getDemoKeyPair(): Promise<CryptoKeyPair> {
-  return _demoKeyPairPromise;
+function xorBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const result = new Uint8Array(a.length);
+  for (let i = 0; i < a.length; i++) result[i] = a[i] ^ b[i];
+  return result;
 }
 
 // ── 암호화 ────────────────────────────────────────────────
 
 /**
- * 평문을 감독기관 공개키로 암호화한다.
+ * 평문을 이중 잠금으로 암호화한다.
  *
- * 1. 임시 AES-256-GCM 키 K를 생성한다.
- * 2. 평문을 K로 암호화해 암호문 C를 만든다 (IV 12바이트 앞에 연접).
- * 3. K를 감독기관 RSA-OAEP 공개키로 래핑해 encryptedK를 만든다.
- * 4. { C, encryptedK }를 반환한다 — 서버로 전송되는 형태.
+ * @param plaintext - 암호화할 평문 (JSON 직렬화된 신고 내용 등)
+ * @param publicKey - 감독기관 RSA-OAEP 공개키 (잠금 2)
+ * @param K         - Shamir 비밀키, OPRF로 유도된 bigint (잠금 1)
  */
 export async function encryptForSupervisor(
   plaintext: string,
   publicKey: CryptoKey,
+  K: bigint,
 ): Promise<EncryptedBlob> {
   // 1. 임시 AES-256-GCM 키 생성
   const aesKey = await crypto.subtle.generateKey(
@@ -83,6 +81,7 @@ export async function encryptForSupervisor(
     true,
     ["encrypt", "decrypt"],
   );
+  console.log("[Encrypt] 1. AES-256-GCM 임시 키 생성 완료");
 
   // 2. 평문 암호화 (IV는 매 호출마다 새로 생성)
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -97,15 +96,19 @@ export async function encryptForSupervisor(
   ivAndCipher.set(iv, 0);
   ivAndCipher.set(new Uint8Array(cipherBuf), 12);
   const C = toBase64(ivAndCipher.buffer);
+  console.log("[Encrypt] 2. AES-GCM 암호화 완료 — C:", C.slice(0, 16) + "...");
 
-  // 3. AES 키 원시값 내보내기 → RSA-OAEP 래핑
-  const rawAesKey = await crypto.subtle.exportKey("raw", aesKey);
-  const wrappedKey = await crypto.subtle.encrypt(
-    { name: "RSA-OAEP" },
-    publicKey,
-    rawAesKey,
+  // 3. XOR 이중 잠금: bundle = randomKey XOR K
+  const rawAesKey = new Uint8Array(await crypto.subtle.exportKey("raw", aesKey));
+  const K_bytes = bigintToBytes32(K);
+  const bundle = xorBytes(rawAesKey, K_bytes);
+  console.log("[Encrypt] 3. XOR 잠금 — bundle = randomKey XOR K 완료");
+
+  // 4. bundle을 RSA-OAEP로 래핑
+  const encryptedK = toBase64(
+    await crypto.subtle.encrypt({ name: "RSA-OAEP" }, publicKey, bundle),
   );
-  const encryptedK = toBase64(wrappedKey);
+  console.log("[Encrypt] 4. RSA-OAEP 래핑 완료 — encryptedK:", encryptedK.slice(0, 16) + "...");
 
   return { C, encryptedK };
 }
@@ -113,37 +116,72 @@ export async function encryptForSupervisor(
 // ── 복호화 ────────────────────────────────────────────────
 
 /**
- * 감독기관 비밀키로 암호문을 복호화해 평문을 반환한다.
+ * 이중 잠금을 해제해 평문을 복원한다.
  *
- * 감독기관이 임계값 충족 알림을 수신한 후 이 함수로 신고 내용을 열람한다.
+ * @param blob       - 암호문 블랍
+ * @param privateKey - 감독기관 RSA-OAEP 비밀키 (잠금 2 해제)
+ * @param K          - recoverK()로 복원한 Shamir 비밀키 (잠금 1 해제)
  */
 export async function decryptFromSupervisor(
   blob: EncryptedBlob,
   privateKey: CryptoKey,
+  K: bigint,
 ): Promise<string> {
-  // 1. RSA-OAEP 언래핑 → AES 원시키 복원
-  const rawAesKey = await crypto.subtle.decrypt(
-    { name: "RSA-OAEP" },
-    privateKey,
-    fromBase64(blob.encryptedK),
-  );
-  const aesKey = await crypto.subtle.importKey(
-    "raw",
-    rawAesKey,
-    { name: "AES-GCM" },
-    false,
-    ["decrypt"],
-  );
+  // 1. RSA-OAEP 언래핑 → bundle = randomKey XOR K
+  console.log("[Decrypt] 1. RSA-OAEP 언래핑 시작 - encryptedK 길이:", blob.encryptedK.length);
+  let bundle: Uint8Array;
+  try {
+    bundle = new Uint8Array(
+      await crypto.subtle.decrypt(
+        { name: "RSA-OAEP" },
+        privateKey,
+        fromBase64(blob.encryptedK),
+      ),
+    );
+    console.log("[Decrypt] 2. RSA-OAEP 언래핑 성공 - bundle 길이:", bundle.length);
+  } catch (e) {
+    console.error("[Decrypt] RSA-OAEP 실패 - 비밀키가 암호화 시 사용한 공개키와 다를 수 있음:", e);
+    throw e;
+  }
 
-  // 2. IV 분리 → AES-GCM 복호화
+  // 2. XOR 해제: randomKey = bundle XOR K
+  const K_bytes = bigintToBytes32(K);
+  const rawAesKey = xorBytes(bundle, K_bytes);
+  console.log("[Decrypt] 3. XOR 해제 완료 - K:", K.toString(16).slice(0, 16) + "...");
+
+  // 3. AES 키 복원
+  let aesKey: CryptoKey;
+  try {
+    aesKey = await crypto.subtle.importKey(
+      "raw",
+      rawAesKey,
+      { name: "AES-GCM" },
+      false,
+      ["decrypt"],
+    );
+    console.log("[Decrypt] 4. AES 키 복원 성공");
+  } catch (e) {
+    console.error("[Decrypt] AES 키 복원 실패:", e);
+    throw e;
+  }
+
+  // 4. AES-GCM 복호화
   const ivAndCipher = fromBase64(blob.C);
   const iv = ivAndCipher.slice(0, 12);
   const ciphertext = ivAndCipher.slice(12);
-  const plainBuf = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    ciphertext,
-  );
+  console.log("[Decrypt] 5. AES-GCM 복호화 시작 - C 길이:", blob.C.length);
+  let plainBuf: ArrayBuffer;
+  try {
+    plainBuf = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      aesKey,
+      ciphertext,
+    );
+  } catch (e) {
+    console.error("[Decrypt] AES-GCM 복호화 실패 - K가 암호화 시와 다름:", e);
+    throw e;
+  }
 
+  console.log("[Decrypt] 6. 복호화 완료");
   return new TextDecoder().decode(plainBuf);
 }

@@ -19,11 +19,11 @@ export default function Home() {
         </div>
 
         <VStack align="center" gap={16} fullWidth>
-          <h1 className={s.title}>노인학대, 함께 막아요</h1>
+          <h1 className={s.title}>직장 내 괴롭힘, 함께 드러냅니다</h1>
           <Typo.Body className={s.subtitle}>
-            주변 어르신이 학대받고 있다면 망설이지 말고 신고해 주세요.
+            혼자 참지 마세요. 같은 피해를 입은 동료가 한 명만 더 있어도
             <br />
-            여러분의 작은 관심이 큰 도움이 됩니다.
+          직장안전이 전문가 검토의 계기를 만들어 드립니다.
           </Typo.Body>
         </VStack>
 

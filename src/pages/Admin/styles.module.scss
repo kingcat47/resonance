@@ -1,0 +1,219 @@
+.page {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: $spacing-40 $spacing-24 $spacing-100;
+}
+
+.header {
+  padding-bottom: $spacing-24;
+  border-bottom: 2px solid $color-border;
+  margin-bottom: $spacing-32;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-8;
+  padding: $spacing-4 $spacing-12;
+  border-radius: $radius-full;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: $spacing-12;
+}
+
+.badgeAdmin {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fbbf24;
+}
+
+// ── 키 상태 카드 ─────────────────────────────────────────
+.keyCard {
+  padding: $spacing-16;
+  border: 1px solid $color-border;
+  border-radius: $radius-12;
+  background: $color-surface-subtle;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: $spacing-12;
+}
+
+.keyStatus {
+  display: flex;
+  align-items: center;
+  gap: $spacing-8;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: $radius-full;
+  flex-shrink: 0;
+}
+
+.dotReady {
+  background: #22c55e;
+}
+
+.dotNone {
+  background: $color-text-subtle;
+}
+
+// ── 조회 섹션 ────────────────────────────────────────────
+.queryRow {
+  display: flex;
+  gap: $spacing-12;
+  align-items: flex-end;
+}
+
+.adminKeyInput {
+  flex: 1;
+  padding: $spacing-10 $spacing-16;
+  border: 1px solid $color-border;
+  border-radius: $radius-8;
+  font-size: 14px;
+  font-family: "Courier New", monospace;
+  background: $color-surface;
+  color: $color-text;
+
+  &:focus {
+    outline: none;
+    border-color: $color-surface-brand-heavy;
+  }
+}
+
+.error {
+  padding: $spacing-12 $spacing-16;
+  background: #fff5f5;
+  border: 1px solid #ffcdd2;
+  border-radius: $radius-8;
+  color: #d32f2f;
+  font-size: 14px;
+}
+
+.empty {
+  padding: $spacing-24;
+  text-align: center;
+  background: $color-surface-subtle;
+  border-radius: $radius-12;
+  border: 1px dashed $color-border;
+  color: $color-text-subtle;
+}
+
+// ── 매칭 카드 ────────────────────────────────────────────
+.matchCard {
+  border: 1px solid $color-border;
+  border-radius: $radius-16;
+  overflow: hidden;
+  background: $color-surface;
+}
+
+.matchHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: $spacing-16 $spacing-20;
+  background: $color-surface-subtle;
+  border-bottom: 1px solid $color-border;
+  gap: $spacing-12;
+  flex-wrap: wrap;
+}
+
+.matchTag {
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  color: $color-text-subtle;
+  word-break: break-all;
+}
+
+.matchBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacing-4;
+  padding: 3px 10px;
+  border-radius: $radius-full;
+  font-size: 12px;
+  font-weight: 600;
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+  white-space: nowrap;
+}
+
+.matchBody {
+  padding: $spacing-20;
+}
+
+// ── 복호화 결과 ──────────────────────────────────────────
+.decryptResult {
+  margin-top: $spacing-16;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-12;
+}
+
+.reportBlock {
+  border: 1px solid $color-border;
+  border-radius: $radius-12;
+  overflow: hidden;
+}
+
+.reportBlockHeader {
+  padding: $spacing-10 $spacing-16;
+  background: $color-surface-brand-subtle;
+  border-bottom: 1px solid $color-border;
+  font-size: 12px;
+  font-weight: 600;
+  color: $color-text-brand-heavy;
+}
+
+.reportBlockBody {
+  padding: $spacing-16;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-8;
+}
+
+.fieldRow {
+  display: flex;
+  gap: $spacing-12;
+}
+
+.fieldKey {
+  flex-shrink: 0;
+  width: 100px;
+  font-size: 12px;
+  color: $color-text-subtle;
+  font-weight: 500;
+  padding-top: 2px;
+}
+
+.fieldVal {
+  flex: 1;
+  font-size: 14px;
+  color: $color-text;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.shamirBox {
+  padding: $spacing-12 $spacing-16;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: $radius-8;
+  font-size: 12px;
+  font-family: "Courier New", monospace;
+  color: #15803d;
+  word-break: break-all;
+}
+
+.decryptError {
+  padding: $spacing-12 $spacing-16;
+  background: #fff5f5;
+  border: 1px solid #ffcdd2;
+  border-radius: $radius-8;
+  font-size: 13px;
+  color: #d32f2f;
+}

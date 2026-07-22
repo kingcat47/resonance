@@ -7,7 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 서버는 암호문만 저장한다 — 평문 신고내용·이메일 컬럼 없음 (DESIGN.md 원칙)
+// ── 서버는 암호문만 저장한다 — 평문 신고내용·이메일 컬럼 없음 ─
 model Report {
   id                 String   @id @default(cuid())
 
@@ -30,4 +30,11 @@ model Report {
 
   // tag로 빠른 매칭 판정
   @@index([tag])
+}
+
+// tag당 1회만 알림을 보내기 위한 상태 플래그
+// PK = tag 이므로 unique constraint가 자동 적용됨 → 동시 요청 시 중복 발송 방지
+model MatchNotification {
+  tag        String   @id
+  notifiedAt DateTime @default(now())
 }
