@@ -4,7 +4,7 @@ import { Spacing, Typo, VStack } from "@/components/ui";
 import { encryptForSupervisor } from "@/lib/crypto/encrypt";
 import type { EncryptedBlob } from "@/lib/crypto/encrypt";
 import { getSupervisorPublicKey } from "@/lib/crypto/supervisorKey";
-import { makeTag } from "@/lib/crypto/tag";
+import { makeTagFromK } from "@/lib/crypto/tag";
 import type { ReportDraft } from "@/types/report";
 
 import s from "./step.module.scss";
@@ -87,9 +87,9 @@ export default function Step5Review({ draft, K }: Props) {
   const matchingServerData = (() => {
     const { companyId, perpetratorName, perpetratorDept } = matching;
     if (!companyId.trim() || !perpetratorName.trim() || !perpetratorDept.trim()) return "";
-    const tag = makeTag(companyId, perpetratorName, perpetratorDept);
-    if (K === null) return `tag (HMAC-SHA256):\n${tag}\n\nshare: OPRF 연산 중…`;
-    return `tag (HMAC-SHA256):\n${tag}\n\nK (OPRF 유도값, 앞 32자):\n${K.toString(16).slice(0, 32)}…\n\nshare: 제출 시 랜덤 x로 생성`;
+    if (K === null) return `tag: OPRF 연산 중…\n\nshare: OPRF 연산 중…`;
+    const tag = makeTagFromK(K);
+    return `tag (SHA256(K)):\n${tag}\n\nK (OPRF 유도값, 앞 32자):\n${K.toString(16).slice(0, 32)}…\n\nshare: 제출 시 랜덤 x로 생성`;
   })();
 
   // ── incident / contact — K로 실제 암호화 ──────────────

@@ -35,7 +35,7 @@ const API_BASE: string =
 
 /**
  * 가해자 식별 정보를 정규화한 문자열을 반환한다.
- * tag 생성(tag.ts의 makeTag)과 OPRF 입력 모두 이 규칙을 따른다.
+ * tag 생성(tag.ts의 makeTagFromK)과 OPRF 입력 모두 이 규칙을 따른다.
  * 같은 가해자 → 같은 정규화 문자열 → 같은 tag, 같은 K.
  */
 export function normalizePerpetratorInput(

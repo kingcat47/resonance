@@ -7,7 +7,7 @@ import { encryptForSupervisor } from "@/lib/crypto/encrypt";
 import { deriveKviaOPRF, normalizePerpetratorInput } from "@/lib/crypto/oprf";
 import { makeShare, randomShareX } from "@/lib/crypto/shamir";
 import { getSupervisorPublicKey } from "@/lib/crypto/supervisorKey";
-import { makeTag } from "@/lib/crypto/tag";
+import { makeTagFromK } from "@/lib/crypto/tag";
 import type { IncidentData, MatchingData, ReportDraft, ReporterContact } from "@/types/report";
 
 import s from "./styles.module.scss";
@@ -176,8 +176,8 @@ export default function Report() {
       // 1. OPRF로 K 유도 — Step5 진입 시 캐싱된 값 재사용
       const { companyId, perpetratorName, perpetratorDept } = draft.matching;
       const normalized = normalizePerpetratorInput(companyId, perpetratorName, perpetratorDept);
-      const tag = makeTag(companyId, perpetratorName, perpetratorDept);
       const K = cachedK ?? await deriveKviaOPRF(normalized);
+      const tag = makeTagFromK(K);
 
       // 2. Shamir share — x는 crypto 랜덤 (타임스탬프 충돌 방지)
       const x = randomShareX();
