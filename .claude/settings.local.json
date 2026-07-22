@@ -7,7 +7,16 @@
       "Bash(node -e \"const fs=require\\(''fs''\\); const p=JSON.parse\\(fs.readFileSync\\(''node_modules/@noble/hashes/package.json'',''utf8''\\)\\); console.log\\(''version:'', p.version\\); console.log\\(''exports:'', JSON.stringify\\(Object.keys\\(p.exports||{}\\)\\)\\)\")",
       "Bash(node --input-type=module -e \"import { sha256 } from ''@noble/hashes/sha2''; import { hmac } from ''@noble/hashes/hmac''; import { bytesToHex } from ''@noble/hashes/utils''; const h = sha256\\(new TextEncoder\\(\\).encode\\(''test''\\)\\); console.log\\(''sha256 ok:'', bytesToHex\\(h\\)\\); const hm = hmac\\(sha256, new TextEncoder\\(\\).encode\\(''key''\\), new TextEncoder\\(\\).encode\\(''msg''\\)\\); console.log\\(''hmac ok:'', bytesToHex\\(hm\\)\\);\")",
       "Bash(npm test:*)",
-      "Bash(npx prisma:*)"
+      "Bash(npx prisma:*)",
+      "Bash(cd:*)",
+      "Bash(npm run:*)",
+      "Bash(npx nest:*)",
+      "Bash(node clear-notifications.mjs)",
+      "Bash(node:*)",
+      "WebSearch",
+      "mcp__claude_ai_Notion__notion-fetch",
+      "mcp__claude_ai_Notion__notion-create-pages",
+      "mcp__claude_ai_Notion__notion-update-page"
     ]
   }
 }
